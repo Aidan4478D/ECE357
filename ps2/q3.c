@@ -8,6 +8,21 @@
 #include "inode_counts.h"
 #include "stack.h"
 
+// should we count the . and .. as directories
+// is this output fine
+
+// find problematic names
+int problematic_name(const char *name) {
+    for (int i = 0; name[i] != '\0'; ++i) {
+
+        unsigned char c = (unsigned char)name[i];
+        
+        // if character is non printable ascii or shell return 1
+        if (strchr(" \t*?[]{}$&;\'\"`\\|()<>~", c) || (c < 32 || c >= 127)) return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     
     char* root_path;
@@ -17,6 +32,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    // use a stack to search directories in a DFS manner
     Stack directories;
     initialize(&directories);
     push(&directories, root_path);
@@ -28,6 +44,7 @@ int main(int argc, char* argv[]) {
         size_t disk_blocks = 0;
         size_t hard_links = 0;
         size_t broken_symlinks = 0;
+        size_t prob_paths = 0;
 
         char* path = pop(&directories);
         printf("\nExploring directory path %s\n", path);
@@ -42,6 +59,8 @@ int main(int argc, char* argv[]) {
         while ((entry = readdir(dr)) != NULL) {
             
             struct stat file_stat;
+            struct stat target_stat;
+
             int type = entry->d_type; 
             int path_len = strlen(path), entry_len = strlen(entry->d_name);
             char* file_path = malloc(path_len + entry_len);
@@ -49,91 +68,62 @@ int main(int argc, char* argv[]) {
             snprintf(file_path, path_len + entry_len + 1, "%s%s", path, entry->d_name);
             /*printf("%s type is %d\n", entry->d_name, entry->d_type);*/
             
-            /* part a */
-            /*if (lstat(file_path, &file_stat) == 0 || type != DT_UNKNOWN) {*/
-                /*if (S_ISREG(file_stat.st_mode) || type == DT_REG) counts.fcts[FILES]++;*/
-                /*else if (S_ISLNK(file_stat.st_mode) || type == DT_LNK) counts.fcts[SYMS]++;*/
-                /*else if (S_ISCHR(file_stat.st_mode) || type == DT_BLK) counts.fcts[BLOCKS]++;*/
-                /*else if (S_ISBLK(file_stat.st_mode) || type == DT_CHR) counts.fcts[CHARS]++;*/
-                /*else if (S_ISFIFO(file_stat.st_mode) || type == DT_FIFO) counts.fcts[FIFOS]++;*/
-                /*else if (S_ISSOCK(file_stat.st_mode) || type == DT_SOCK) counts.fcts[SOCKS]++;*/
-                /*else if (S_ISDIR(file_stat.st_mode) || type == DT_DIR) {*/
-                    /*if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {*/
-                        /*push(&directories, file_path);*/
-                    /*}*/
-                    /*counts.fcts[DIRS]++;*/
-                /*}*/
-            /*}*/
-            /*else {*/
-                /*printf("file type %d unknown\n", type);*/
-            /*}*/
-
+            /* part a - report inode counts */
             if (lstat(file_path, &file_stat) == 0) {
-                if (S_ISREG(file_stat.st_mode)) counts.fcts[FILES]++;
-                else if (S_ISLNK(file_stat.st_mode)) counts.fcts[SYMS]++;
+                if (S_ISREG(file_stat.st_mode)) {
+                    
+                    /* part b - report regular file sizes and block space */
+                    file_sizes += file_stat.st_size;
+                    disk_blocks += file_stat.st_blocks;
+
+                    counts.fcts[FILES]++;
+                }
+                else if (S_ISDIR(file_stat.st_mode)) {
+
+                    // add new directories (that aren't . and ..) onto the stack and add to counts
+                    if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                        push(&directories, strcat(file_path, "/"));
+                        counts.fcts[DIRS]++;
+                    }
+                }
+                else if (S_ISLNK(file_stat.st_mode)) {
+                    /* part d */
+                    if (stat(file_path, &target_stat) == -1) {
+                        if (errno == ENOENT) {
+                            broken_symlinks++;
+                        }
+                    }
+                    counts.fcts[SYMS]++;
+                }
                 else if (S_ISCHR(file_stat.st_mode)) counts.fcts[CHARS]++;
                 else if (S_ISBLK(file_stat.st_mode)) counts.fcts[BLOCKS]++;
                 else if (S_ISFIFO(file_stat.st_mode)) counts.fcts[FIFOS]++;
                 else if (S_ISSOCK(file_stat.st_mode)) counts.fcts[SOCKS]++;
-                else if (S_ISDIR(file_stat.st_mode)) {
-                    if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                        push(&directories, strcat(file_path, "/"));
-                    }
-                    counts.fcts[DIRS]++;
-                }
             }
-            else if (type != DT_UNKNOWN) {
-                if (type == DT_REG) counts.fcts[FILES]++;
-                else if (type == DT_LNK) counts.fcts[SYMS]++;
-                else if (type == DT_CHR) counts.fcts[CHARS]++;
-                else if (type == DT_BLK) counts.fcts[BLOCKS]++;
-                else if (type == DT_FIFO) counts.fcts[FIFOS]++;
-                else if (type == DT_SOCK) counts.fcts[SOCKS]++;
-                else if (type == DT_DIR) {
-                    if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                        push(&directories, strcat(file_path, "/"));
-                    }
-                    counts.fcts[DIRS]++;
-                }
-            } 
             else {
-                printf("could not identify file");
+                printf("Could not identify file '%s' with lstat num %d", file_path, lstat(file_path, &file_stat));
             }
-
-            
-            /* part b */
-            file_sizes += file_stat.st_size;
-            disk_blocks += file_stat.st_blocks;
 
             /* part c */
-            if(!S_ISDIR(file_stat.st_mode) && file_stat.st_nlink > 1) hard_links += file_stat.st_nlink;
-            
-            /* part d */
-            struct stat slink_stat;
-            struct stat target_stat;
-            // get info about link
-            if (lstat(file_path, &slink_stat) == -1) continue;
+            if((!S_ISDIR(file_stat.st_mode) || !(type == DT_DIR)) && file_stat.st_nlink > 1) hard_links += file_stat.st_nlink;
 
-            // check if link resolves
-            if (S_ISLNK(slink_stat.st_mode)) {
-                if (stat(file_path, &target_stat) == -1) {
-                    if (errno == ENOENT) {
-                        broken_symlinks++;
-                    }
-                }
+            /* part e */
+            if (problematic_name(entry->d_name)) {
+                printf("problematic name is %s\n", entry->d_name);
+                prob_paths++;
             }
-       }
+        }
 
+        // print directory statistics
         for (int i = 0; i < FILE_TYPE_COUNT; i++) {
             if(counts.fcts[i]) printf("%s: %d\n", labels[i], counts.fcts[i]);
         }
         printf("total file size is: %ld\n", file_sizes);
         printf("total disk blocks allocated is: %ld\n", disk_blocks);
         printf("total num hard links > 1 (excluding dirs) is: %ld\n", hard_links);
-        printf("symlinks broken: %ld\n\n", broken_symlinks);
+        printf("symlinks broken: %ld\n", broken_symlinks);
+        printf("problematic pathnames: %ld\n\n", prob_paths);
 
-        // reset variable counts
-        /*file_sizes = disk_blocks = hard_links = broken_symlinks = 0;*/
         closedir(dr);     
     }
 

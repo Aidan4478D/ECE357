@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+// can hold a max of 4096 directories in the DFS search
 #define MAX_STACK_SIZE 4096
 
 // heavy inspiration taken from
@@ -37,7 +38,7 @@ void push(Stack *stack, char* value) {
     }
 
     stack->arr[++stack->top] = value;
-    printf("Pushed %s onto the stack\n", value);
+    //printf("Pushed %s onto the stack\n", value);
 }
 
 char* pop(Stack *stack) {
@@ -50,7 +51,7 @@ char* pop(Stack *stack) {
     char* popped = stack->arr[stack->top];
     stack->top--;
 
-    printf("Popped %s from the stack\n", popped);
+    //printf("Popped %s from the stack\n", popped);
     return popped;
 }
 
