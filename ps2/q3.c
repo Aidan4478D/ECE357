@@ -8,9 +8,6 @@
 #include "inode_counts.h"
 #include "stack.h"
 
-// should we count the . and .. as directories
-// is this output fine
-
 // find problematic names
 int problematic_name(const char *name) {
     for (int i = 0; name[i] != '\0'; ++i) {
@@ -18,7 +15,7 @@ int problematic_name(const char *name) {
         unsigned char c = (unsigned char)name[i];
         
         // if character is non printable ascii or shell return 1
-        if (strchr(" \t*?[]{}$&;\'\"`\\|()<>~", c) || (c < 32 || c >= 127)) return 1;
+        if (strchr(" \t*?{}$&;\'\"`\\|()<>~", c) || (c < 32 || c >= 127)) return 1;
     }
     return 0;
 }
@@ -26,6 +23,7 @@ int problematic_name(const char *name) {
 int main(int argc, char* argv[]) {
     
     char* root_path;
+    //add / on the end of directory path if it doesn't exist
     if(argc == 2) root_path = (argv[1][(strlen(argv[1]))-1] == '/' ? argv[1] : strcat(argv[1], "/"));
     else {
         printf("Please enter in exaclty one argument! (starting path)\n");
@@ -52,8 +50,8 @@ int main(int argc, char* argv[]) {
         struct dirent *entry;
         DIR *dr = opendir(path); 
         if (dr == NULL) { 
-            printf("Could not open directory %s\n", root_path); 
-            return -1; 
+            printf("Could not open directory %s: %s\n", root_path, strerror(errno)); 
+            continue;
         } 
 
         while ((entry = readdir(dr)) != NULL) {
@@ -65,8 +63,8 @@ int main(int argc, char* argv[]) {
             int path_len = strlen(path), entry_len = strlen(entry->d_name);
             char* file_path = malloc(path_len + entry_len);
 
+            // add 1 to account for \0
             snprintf(file_path, path_len + entry_len + 1, "%s%s", path, entry->d_name);
-            /*printf("%s type is %d\n", entry->d_name, entry->d_type);*/
             
             /* part a - report inode counts */
             if (lstat(file_path, &file_stat) == 0) {
@@ -88,10 +86,10 @@ int main(int argc, char* argv[]) {
                 }
                 else if (S_ISLNK(file_stat.st_mode)) {
                     /* part d */
+
+                    // if target path doesn't exist add 1 to broken_symlinks
                     if (stat(file_path, &target_stat) == -1) {
-                        if (errno == ENOENT) {
-                            broken_symlinks++;
-                        }
+                        if (errno == ENOENT) broken_symlinks++;
                     }
                     counts.fcts[SYMS]++;
                 }
@@ -100,16 +98,14 @@ int main(int argc, char* argv[]) {
                 else if (S_ISFIFO(file_stat.st_mode)) counts.fcts[FIFOS]++;
                 else if (S_ISSOCK(file_stat.st_mode)) counts.fcts[SOCKS]++;
             }
-            else {
-                printf("Could not identify file '%s' with lstat num %d", file_path, lstat(file_path, &file_stat));
-            }
+            else printf("Could not identify file '%s' with lstat num %d: %s\n", file_path, lstat(file_path, &file_stat), strerror(errno));
 
             /* part c */
             if((!S_ISDIR(file_stat.st_mode) || !(type == DT_DIR)) && file_stat.st_nlink > 1) hard_links += file_stat.st_nlink;
 
             /* part e */
             if (problematic_name(entry->d_name)) {
-                printf("problematic name is %s\n", entry->d_name);
+                /*printf("problematic name is %s\n", entry->d_name);*/
                 prob_paths++;
             }
         }
@@ -126,7 +122,6 @@ int main(int argc, char* argv[]) {
 
         closedir(dr);     
     }
-
 
     return 0; 
 }
