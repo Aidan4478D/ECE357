@@ -2,6 +2,7 @@
 #define _COMMANDS_H
 
 #include "queue.h"
+#define PWD_PATHNAME_SIZE 4096
 
 // map names to function pointers to make this cool
 typedef struct {

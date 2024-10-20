@@ -24,11 +24,9 @@ int read_input() {
             }
         }
 
-
-        // use a queue to store input tokens
-        Queue* queue = create_queue();
+        // the queues are a little extra here but I made them and didn't want
+        // them to go to waste
         char command[4096]; 
-
         Queue* args_queue = create_queue();
         Queue* io_queue = create_queue();
 
