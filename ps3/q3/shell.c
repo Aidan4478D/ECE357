@@ -7,22 +7,25 @@
 
 #define MAX_INPUT_SIZE 4096
 
+// trim trailing white spaces at the end of input
+void trim_trailing_space(char* str) {
+    int len = strlen(str);
+    if (len > 0) {
+        while (len > 0 && isspace(str[len - 1])) {
+            str[--len] = '\0';
+        }
+    }
+}
+
 int read_input() {
     
     char buf[MAX_INPUT_SIZE];
-    char* ret = NULL;
+    int ret = 0;
 
-    while((ret = fgets(buf, MAX_INPUT_SIZE, stdin))) {
+    while((fgets(buf, MAX_INPUT_SIZE, stdin))) {
 
         // remove trailing whitespace by replacing it with null terminator
-        int c_len = strlen(ret);
-        if (c_len > 0) {
-            int i = c_len - 1;
-            while (i >= 0 && isspace(ret[i])) {
-                ret[i] = '\0';
-                i--;
-            }
-        }
+        trim_trailing_space(buf); 
 
         // the queues are a little extra here but I made them and didn't want
         // them to go to waste
@@ -61,25 +64,36 @@ int read_input() {
         // check for pwd
         else if(strcmp(command, "pwd") == 0) ret = pwd(); // doesn't take any args
 
+        // check for exit and if so exit with most recent return value
         else if(strcmp(command, "exit") == 0) {
-            // exit using last ret value
+        
+            if(!is_empty(args_queue)) {
+                int temp_ret = 0;
+
+                if(get_size(args_queue) > 1) {
+                    fprintf(stderr, "%s: Please enter only one argument. Exiting with %d\n", command, ret);
+                }
+                if((temp_ret = atoi(dequeue(args_queue))) == 0) {
+                    fprintf(stderr, "%s: Invalid return code. Exiting with %d\n", command, ret);
+                }
+                else ret = temp_ret;
+            }
+
+            exit(ret);
         }
 
         // otherwise we have a "general" command which can do i/o redirection
         // needs all the forking and execing and all that
-        else {
-            ret = general_command(command, args_queue, io_queue); 
-        }
-
+        else ret = general_command(command, args_queue, io_queue); 
     }
 
-    printf("ret is: %s and eof is clicked!\n", ret);
+    fprintf(stderr, "ret is: %d and eof is clicked!\n", ret);
 
-    return 0;
+    return ret;
 }
 
 int main() {
 
-    read_input();
-    return 0;
+    int ret = read_input();
+    return ret;
 }

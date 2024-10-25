@@ -19,7 +19,7 @@ bool is_full(Queue* queue) {
 void enqueue(Queue* queue, char* value) {
 
     if(is_full(queue)) {
-        printf("Queue overflow\n");
+        fprintf(stderr, "Queue overflow\n");
         return;
     }
 
@@ -32,7 +32,7 @@ void enqueue(Queue* queue, char* value) {
 char* dequeue(Queue* queue) {
 
     if(is_empty(queue)) {
-        printf("Queue is empty!\n");
+        fprintf(stderr, "Queue is empty!\n");
         return NULL;
     }
 
@@ -47,8 +47,7 @@ char* dequeue(Queue* queue) {
 char* peek(Queue* queue) {
 
     if(is_empty(queue)) {
-        
-        printf("queue empty\n");
+        fprintf(stderr, "queue empty\n");
         return NULL;
     }
 

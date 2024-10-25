@@ -17,7 +17,7 @@ int cd(char* d_name) {
     
     int ret = 0;
     if((ret = chdir(d_name)) < 0) {
-        fprintf(stderr, "error changing directories to %s: %s", d_name, strerror(errno));
+        fprintf(stderr, "error changing directories to %s: %s\n", d_name, strerror(errno));
         return errno;
     }
 
@@ -28,8 +28,8 @@ int pwd() {
 
     char* path_name;
 
-    if((path_name = getcwd(NULL, 0)) == NULL) {
-        fprintf(stderr, "error getting the current working directory path: %s", strerror(errno));
+    if(!(path_name = getcwd(NULL, 0))) {
+        fprintf(stderr, "error getting the current working directory path: %s\n", strerror(errno));
         return errno;
     }
 
@@ -40,17 +40,12 @@ int pwd() {
     return 0;
 }
 
-/*int exit(int e_status) {*/
-
-    /*printf("exit was run!!!");*/
-/*}*/
+void exit(int e_status) {
+    _exit(e_status);
+}
 
 int general_command(char* command, Queue* args, Queue* io) {
 
-    /*fprintf(stderr, "command is: %s\n", command);*/
-    /*printf("size of args is: %d\n", get_size(args));*/
-    /*printf("size of io is: %d\n", get_size(io));*/
-    
     int ret = 0;
     pid_t pid = 0;
     
@@ -65,7 +60,7 @@ int general_command(char* command, Queue* args, Queue* io) {
     // in child process
     if(pid == 0) {
 
-        // handle redirection 
+        /* HANDLE I/O REDIRECTION */
         while(!is_empty(io)) {
 
             char* re = dequeue(io);
@@ -98,8 +93,6 @@ int general_command(char* command, Queue* args, Queue* io) {
                 re += 1;
                 fd = open(re, O_WRONLY | O_CREAT | O_TRUNC, 0666);
                 std_re = 1;
-
-                /*printf("opened fd %d with one >\n", fd);*/
             }
             
             // input redirection
@@ -116,7 +109,6 @@ int general_command(char* command, Queue* args, Queue* io) {
             }
 
             // allocate new fd for process and point it to same struct file as std_re
-            /*printf("duplicated fd: %d with stdre: %d on redirect path: %s\n", fd, std_re, re);*/
             dup2(fd, std_re);
             close(fd); 
         }
@@ -134,41 +126,46 @@ int general_command(char* command, Queue* args, Queue* io) {
         
         arg_list[i] = NULL; // null terminate list
 
+        // execute the command
         if (execvp(command, arg_list) < 0) {
             fprintf(stderr, "error executing command %s: %s\n", command, strerror(errno));
             exit(127);
         }
+
     }
 
     // waits for child process to complete 
     if(wait(&ret) < 0) {
-        fprintf(stderr, "error waiting for child process: %s", strerror(errno)); 
+        fprintf(stderr, "error waiting for child process: %s\n", strerror(errno)); 
         return errno;
     }
 
 
-    // Calculate real time in milliseconds
+    // calculate real time in milliseconds
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    double real_time_ms = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+    double real_time_ms = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 
-    // Get CPU times using getrusage
+    // get CPU times using getrusage
     struct rusage usage;
     getrusage(RUSAGE_CHILDREN, &usage);
 
     // user time 
-    double user_time_ms = usage.ru_utime.tv_sec * 1000 + usage.ru_utime.tv_usec / 1000.0;
-    double system_time_ms = usage.ru_stime.tv_sec * 1000 + usage.ru_stime.tv_usec / 1000.0;
+    double user_time_ms = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0;
+    double system_time_ms = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0;
 
 
+    // check if exited with return or exit or killed by signal
+    if (WIFEXITED(ret)) {
+        ret = WEXITSTATUS(ret);
+        fprintf(stderr, "\nChild process %d executed command '%s' and exited normally with status: %d\n", pid, command, ret);
+    }
+    else if(WIFSIGNALED(ret)) {
+        ret = WTERMSIG(ret);
+        fprintf(stderr, "\nChild process %d executed command '%s' and killed by signal %d: %s\n", pid, command, ret, strsignal(ret));
+    }
+    else fprintf(stderr, "\nChild did not exit normally or by signal\n");
 
-    if (WIFEXITED(ret)) printf("child exited with status %d\n", WEXITSTATUS(ret));
-    else if(WIFSIGNALED(ret)) printf("child killed by signal %d\n", WTERMSIG(ret));
-    else printf("child did not exit normally\n");
-
-    printf("Real time elapsed: %.3f ms\n", real_time_ms);
-    printf("User CPU time: %.3f ms\n", user_time_ms);
-    printf("System CPU time: %.3f ms\n", system_time_ms);
+    fprintf(stderr, "Real: %.3fs User: %0.3fs Sys: %0.3fs\n\n", real_time_ms, user_time_ms, system_time_ms);
 
     return ret;
-
 }

@@ -7,6 +7,9 @@
 
 #define MAX_QUEUE_SIZE 4096
 
+// I know using a queue is unnecessary but I made it and don't want it to 
+// go to waste </3
+
 typedef struct {
     int front, rear, size;
     char* arr[MAX_QUEUE_SIZE];
