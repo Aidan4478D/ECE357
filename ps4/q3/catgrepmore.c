@@ -23,26 +23,29 @@ int main(int argc, char* argv[]) {
     char* pattern = argv[1];
     int g_ret = 0;
     int m_ret = 0;
+    int total_read = 0;
 
     // for all infiles
     for(int i = 2; i < argc; i++) {
 
-        int g_pipe[2]; // file descriptors for read and write ends of grep pipe
-        int m_pipe[2]; // file descriptors for read and write ends of more pipe
+        int g_pipe[2]; // file descriptors for grep pipe
+        int m_pipe[2]; // file descriptors for more pipe
+        
+        int infile_fd = 0;
                       
         // open input file and set it to write end of first pipe
-        if((g_pipe[0] = open(argv[i], O_RDONLY)) < 0) {
-            fprintf(stderr, "Could not open file %s: %s", argv[i], strerror(errno)); 
+        if((infile_fd = open(argv[i], O_RDONLY)) < 0) {
+            fprintf(stderr, "Could not open file %s: %s\n", argv[i], strerror(errno)); 
             continue;
         }
 
         // create pipes
         if(pipe(g_pipe) < 0) {
-            fprintf(stderr, "Error making grep pipe: %s", strerror(errno)); 
+            fprintf(stderr, "Error making grep pipe: %s\n", strerror(errno)); 
             return -1;
         }
         if(pipe(m_pipe) < 0) {
-            fprintf(stderr, "Error making more pipe: %s", strerror(errno)); 
+            fprintf(stderr, "Error making more pipe: %s\n", strerror(errno)); 
             return -1;
         }
 
@@ -52,53 +55,108 @@ int main(int argc, char* argv[]) {
         pid_t m_pid = 0; 
         
         if((g_pid = fork()) < 0) {
-            fprintf(stderr, "Fork for grep pipe failed: %s", strerror(errno));
+            fprintf(stderr, "Fork for grep pipe failed: %s\n", strerror(errno));
             return -1;
         }
-        // more child
+        // grep child
         if(g_pid == 0) {
-            // do some error checking with pipes and then execlp grep with pattern
-            // close ends of pipe
-            // then dup2 fds to pipe ends
+            if(close(g_pipe[1]) < 0) {
+                fprintf(stderr, "Error closing write side of grep pipe: %s\n", strerror(errno));
+                return -1;
+            }
+            if(close(m_pipe[0]) < 0) {
+                fprintf(stderr, "Error closing read side of grep pipe: %s\n", strerror(errno));
+                return -1;
+            }
+
+            // set read side of grep pipe to stdin
+            if(dup2(g_pipe[0], STDIN_FILENO) < 0) {
+                fprintf(stderr, "Error duping read side of grep pipe: %s\n", strerror(errno));
+                return -1;
+            }
+
+            // set write side of grep pipe to stdout
+            if(dup2(m_pipe[1], STDOUT_FILENO) < 0) {
+                fprintf(stderr, "Error duping write side of more pipe: %s\n", strerror(errno));
+                return -1;
+            }
+
+            execlp("grep", "grep", pattern, NULL);
+            fprintf(stderr, "Error executing more: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
         }
 
         
         if((m_pid = fork()) < 0) {
-            fprintf(stderr, "Fork for grep pipe failed: %s", strerror(errno));
+            fprintf(stderr, "Fork for grep pipe failed: %s\n", strerror(errno));
             return -1;
         }
         // more child
         if(m_pid == 0) {
             // do some error checking with pipes and then execlp more with no args
-        }
-        
-        // wait for child processes to die
-        if(waitpid(g_pid, &g_ret, 0) < 0) {
-            fprintf(stderr, "Error waiting for grep child process: %s\n", strerror(errno)); 
-            return errno;
-        }
-        if(waitpid(m_pid, &m_ret, 0) < 0) {
-            fprintf(stderr, "error waiting for more child process: %s\n", strerror(errno)); 
-            return errno;
-        }
-
-        // while there are characters to read in the file put them in the buffer
-        ssize_t n_read = 0, n_write = 0;
-        while ((n_read = read(g_pipe[0], buf, BUF_SIZE)) > 0) {
-
-            // write to one end of the pipe but do this after dups
-            /*n_write = write(of_fd, buf, n_read);*/
-            if (n_write != n_read) {
-                /*fprintf(stderr, "Error writing to output file %s: %s\n", of_name, strerror(errno));*/
+            if(close(g_pipe[1]) < 0) {
+                fprintf(stderr, "Error closing read side of grep pipe: %s\n", strerror(errno));
                 return -1;
             }
+            // set read side of grep pipe to stdin
+            if(dup2(m_pipe[0], 0) < 0) {
+                fprintf(stderr, "Error duping read side of more pipe: %s\n", strerror(errno));
+                return -1;
+            }
+
+            // set write side of grep pipe to stdout
+            // standard output is not modified?
+            //
+            /*if(dup2(m_pipe[1], 1) < 0) {*/
+                /*fprintf(stderr, "Error duping write side of grep pipe: %s\n", strerror(errno));*/
+                /*return -1;*/
+            /*}*/
+
+            execlp("more", "more", NULL);
         }
 
+        // in parent process
+        if(m_pid > 0) {
+            
+            // while there are characters to read in the file put them in the buffer
+            ssize_t n_read = 0, n_write = 0;
 
-        // check if there were errors reading from file
-        if (n_read < 0) {
-            fprintf(stderr, "Error reading from %s: %s\n", strcmp(argv[i], "-") == 0 ? "stdin" : argv[i], strerror(errno));
-            return -1;
+            // read from input file
+            // maybe add something with signal handling with EINTR or SA_RESTART
+            while ((total_read += n_read = read(infile_fd, buf, BUF_SIZE)) > 0) {
+
+                // write to write end of grep pipe
+                n_write = write(g_pipe[1], buf, n_read);
+                if (n_write != n_read) {
+                    fprintf(stderr, "Error writing to grep pipe from infile %s: %s\n", argv[i], strerror(errno));
+                    return -1;
+                }
+            }
+
+            if(close(infile_fd) < 0) {
+                fprintf(stderr, "Error closing input file descriptor: %s\n", strerror(errno));
+                return -1;
+            }
+            // close write side of pipe
+            if(close(g_pipe[0]) < 0) {
+                fprintf(stderr, "Error closing write side of pipe: %s\n", strerror(errno));
+                return -1;
+            }
+            if(close(g_pipe[1]) < 0) {
+                fprintf(stderr, "Error closing read side of pipe: %s\n", strerror(errno));
+                return -1;
+            }
+
+
+            // wait for child processes to die
+            if(waitpid(g_pid, &g_ret, 0) < 0) {
+                fprintf(stderr, "Error waiting for grep child process: %s\n", strerror(errno)); 
+                return errno;
+            }
+            if(waitpid(m_pid, &m_ret, 0) < 0) {
+                fprintf(stderr, "error waiting for more child process: %s\n", strerror(errno)); 
+                return errno;
+            }
         }
     }
 
