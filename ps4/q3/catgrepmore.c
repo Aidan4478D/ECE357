@@ -68,6 +68,7 @@ int main(int argc, char* argv[]) {
     // for all infiles
     for(int i = 2; i < argc; i++) {
 
+        // set long jump point
         if(sigsetjmp(jump_buffer, 1) == 0) {
 
             total_files++;
@@ -145,7 +146,7 @@ int main(int argc, char* argv[]) {
 
             
             if((m_pid = fork()) < 0) {
-                fprintf(stderr, "Fork for grep pipe failed: %s\n", strerror(errno));
+                fprintf(stderr, "Fork for more pipe failed: %s\n", strerror(errno));
                 return errno;
             }
             // more child
@@ -212,12 +213,12 @@ int main(int argc, char* argv[]) {
                         else if(errno == EPIPE) break; // is this what u mean by the grep program dies on a broken pipe #2
                         else {
                             fprintf(stderr, "Error reading from infile %s: %s\n", argv[i], strerror(errno));
-                            break; // just move onto next file
+                            break; // just move onto next file if we can't resolve
                         }
                     }
                     
                     // keep track of total bytes written to grep pipe so we can save our position
-                    // in case an error occurs
+                    // in case an error occurs 
                     int total_written = 0;
                     while(total_written < n_read) {
                         total_written += n_write = write(g_pipe[1], buf + total_written, n_read - total_written);
