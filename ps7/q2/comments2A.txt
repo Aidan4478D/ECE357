@@ -1,0 +1,10 @@
+2A)
+
+    The system calls I found when tracing out my hello.c that correspond to write and _exit are:
+
+    write(1, "Hello world!\n", 13Hello world!
+    )          = 13
+   exit_group(0)      
+
+    I then read in the man page of exit_group that this "system  call  is equivalent to _exit(0) except that it terminates not only the calling thread, but all threads in the calling process's thread group."
+

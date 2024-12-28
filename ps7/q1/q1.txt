@@ -1,0 +1,30 @@
+1. 
+	syscall saved in eax register
+	do unsigned comparison between eax and nr_syscalls
+		- if %eax is greater than or equal to nr_syscalls, the code branches to syscall_badsys
+		- if %eax is -1 -> unsigned = 0xFFFFFFFF
+	- then jump to syscall_badsys and -ENOSYS is saved in the %eax register
+	- when control returns to the 'glue function' (back in user space) errno will get a positive version of -ENOSYS, and will return -1 to the user
+
+2. iret used- > restores the eip, cs, eflags, esp, and ss registers
+ 	• Resets the privilege level to the previous value (because the %eflags register has been restored from the stack)
+ 	• Resumes execution with the stack pointer now set back to the original stack. Since this is a system call, the next instruction is executed
+
+3. TSS or %esp
+
+	If the processor is in User Mode when the fault, interrupt, or system call occurs, it fetches the TSS to load a new value for %esp. This sets the stack pointer to point to the kernel-mode stack defined for the task.
+
+	If the processor is already in Supervisor Mode (kernel mode) at the time of the event, the TSS is not used, as the current stack pointer (%esp) is already within the kernel-mode stack.
+
+
+4. .text = in the text region
+
+	a) puts 3 in rdi register
+	b) puts 37 in rax register
+	c) syscall #37 with arg1 = (rdi=3) -> alarm(3)
+		- when the alarm expires after 3 seconds, the kernel delivers a SIGALRM signal to the process.
+	d) put 34 in rax register
+	e) syscall #34 -> pause() -> wait for a signal
+		- will be hit with SIGALARM from previous system call!
+
+	return value will be 128 + (SIGALARM = 14) = 142
