@@ -1,0 +1,67 @@
+1a) The problem lies in the fact that the operations aren't atomic. An example here is, 
+Thread A and B both try to insert after the same 'where' node 
+Now Thread A reads where->fwd 
+Now Thread B reads where->fwd 
+Thread A sets what->fwd and where->fwd 
+Thread B sets what->fwd and where->fwd 
+
+At this point you are a little screwed. This is because thread B has completely overwritten thread A's update meaning we losts whatever thread A tried to insert. We need to handle concurrent modifications of the shared list structure. 
+
+
+1b) 
+
+
+
+void ll_insert(struct ll_head *head, struct ll_elem *where,struct ll_elem *what)
+{
+	
+	sigset_t newmask, oldmask;
+
+
+	sigfillset(&newmask); /* All possible signals */
+	sigprocmask(SIG_BLOCK, &newmask, &oldmask); /* Block */
+
+	
+	if (where)
+	{
+		what->fwd = where->fwd;
+		where->fwd = what;
+	} else {
+		head->first=what;
+		what->fwd = head->first;
+	}
+	sigprocmask(SIG_SETMASK,&oldmask,NULL); /* Restore */
+}
+
+1c) Let us spin the lock 
+
+
+struct ll_head {
+    struct ll_elem *first;
+    int spinlock;  /* 0 is unlocked, non-zero is locked */
+};
+
+struct ll_elem {
+    struct ll_elem *fwd;
+    int spinlock;   /* 0 is unlocked, non-zero is locked */
+};
+
+void ll_insert(struct ll_head *head, struct ll_elem *where, struct ll_elem *what) {
+	
+	if (where)
+	{
+		/* Lock just the element ww're inserting after */
+		while (TAS(&where->spinlock) !=0) 
+			;
+		what->fwd = where->fwd;
+		where->fwd = what;
+		where->spinlock = 0; /* RELEASE ME */
+	} else {
+		/* We need the head lock if we are at the head */
+		while (TAS(&head->spinlock) !=0)
+			;
+		head->first=what;
+		what->fwd = head->first;
+		head->spinlock=0; /* RELEASE ME */
+	}
+}
