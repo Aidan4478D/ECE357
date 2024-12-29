@@ -58,20 +58,18 @@ int test_template(int permission) {
 
     if((fd = open(f_name, O_RDWR | O_CREAT | O_TRUNC, 0666)) < 0) {
         fprintf(stderr, "Error opening %s for test 2: %s", f_name, strerror(errno));
+        return -1;
     }
 
     // need to make sure file is of sufficient size
     if(ftruncate(fd, PAGE_LEN) == -1) {
         fprintf(stderr, "Error truncating file: %s\n", strerror(errno));
-        return errno;
+        return -1;
     }
 
-    // addr = NULL so kernel chooses addres
-    // length = 4096 -> page aligned
-    // offset = 0
     if((map = mmap(NULL, PAGE_LEN, PROT_READ | PROT_WRITE, permission, fd, 0)) == MAP_FAILED) {
         fprintf(stderr, "mmap failed in test 2: %s\n", strerror(errno));
-        return errno; 
+        return -1; 
     }
 
     map[offset] = write_content;
@@ -79,25 +77,26 @@ int test_template(int permission) {
 
     // lseek to offset
     if(lseek(fd, offset, SEEK_SET) == -1) {
-        fprintf(stderr, "lseek failed: %s\n", strerror(errno));
-        return errno;
+        fprintf(stderr, "lseek to offset %d failed: %s\n", offset, strerror(errno));
+        return -1;
     }
 
     // read 1 byte from the position we just lseek'd to
     if(read(fd, &file_byte, 1) != 1) {
-        fprintf(stderr, "read failed: %s\n", strerror(errno));
-        return errno;
+        fprintf(stderr, "reading from map[%d] failed: %s\n", offset, strerror(errno));
+        return -1;
     }
 
-    // byte checking
+    // exit 1 if the file's byte didn't change - aka the write didn't occur in the file
     fprintf(stderr, "Byte read from file: '%c'\n", file_byte);
     if(file_byte != write_content) {
         fprintf(stderr, "\nCharacter is: %c from original\nCharacter is: %c from file\nBytes do not match!\n", write_content, file_byte); 
-        return 0;
+        return 1;
     }
+    // exit 0 if the file's byte changes - aka the write occured in the file
     else {
         fprintf(stderr, "Bytes match!!!\n"); 
-        return 1;
+        return 0;
     }
     
 }
@@ -122,8 +121,8 @@ int test4() {
     char* f_name = "testfile4.txt";
     char write_content = 'X';
 
-    int init_file_size = 4101;
-    int offset_write = 4101;       // Offset beyond the end of the file
+    int init_file_size = 4100;
+    int offset_write = init_file_size + 1;
     int offset_extend = init_file_size + 16; // Offset to extend the file by 16 bytes
 
     if((fd = open(f_name, O_RDWR | O_CREAT | O_TRUNC, 0666)) < 0) {
@@ -173,7 +172,7 @@ int test4() {
     }
     fprintf(stderr, "byte read from file at offset %d: '%c'\n", offset_write, file_byte);
 
-    // Compare the byte read with 'X'
+    // compare the byte read with 'X'
     if(file_byte == write_content) {
         fprintf(stderr, "\nbyte is visible in the file!!\n");
         return 0;
